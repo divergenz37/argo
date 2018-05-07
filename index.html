@@ -1,0 +1,54 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="viewport" content="width=device-width" />
+<meta name="description" content="" />
+<title>stars</title>
+<meta property="og:title" content="stars" />
+<meta property="og:description" content="" />
+<meta property="og:type" content="website" />
+<script type="text/javascript" src="data.js"></script>
+<script type="text/javascript" src="argo.js"></script>
+<style>
+html, body {
+	margin: 0;
+	padding: 0;
+	width: 100%;
+	height: 100%;
+}
+div#content {
+	width: 100%;
+	height: 100%;
+	position: relative;
+	background-color: black;
+}
+canvas {
+	position: absolute;
+	width: 100%;
+	height: 100%;
+}
+canvas#bg {
+	z-index: 1;
+}
+canvas#stars {
+	z-index: 2;
+}
+canvas#messiers {
+	z-index: 3;
+}
+canvas#grid {
+	z-index: 4;
+}
+</style>
+</head>
+
+<body>
+<div id="content">
+<canvas id="bg"></canvas>
+<canvas id="stars"></canvas>
+<canvas id="messiers"></canvas>
+<canvas id="grid"></canvas>
+</div>
+</body>
+</html>

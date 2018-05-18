@@ -48,7 +48,7 @@ var Quaternion = function(a, b, c, d){
             return this.scale(1 / this.norm());
         }
     }
-	this.normalise = this.unit;
+    this.normalise = this.unit;
     this.versor = this.unit; //synonym
     this.dot = function(q){
         if(q instanceof Quaternion){
@@ -109,6 +109,21 @@ Quaternion.product = function(){
 Quaternion.fromAxisAngle = function(axis, angle){
     return new Quaternion( Math.cos(angle/2), Math.sin(angle/2) * axis[0], Math.sin(angle/2) * axis[1], Math.sin(angle/2) * axis[2]);
 }
+Quaternion.fromTwoVectors = function(u, v){
+    var threshold = 0.9995;
+    var dot = u[0]*v[0] + u[1]*v[1] + u[2]*v[2];
+    var nu = Math.sqrt(u[0]*u[0] + u[1]*u[1] + u[2]*u[2]);
+    var nv = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+    var w = [ u[1]*v[2] - u[2]*v[1], u[2]*v[0] - u[0]*v[2], u[0]*v[1] - u[1]*v[0] ];
+    if(dot < (-threshold * nu * nv)){
+        w = Math.abs(u[0]) > Math.abs(u[2]) ? [-u[1], u[0], 0] : [0, -u[2], u[1]];
+        return (new Quaternion(0, w[0], w[1], w[2])).normalise();
+    } else {
+        var q = new Quaternion(dot, w[0], w[1], w[2]);
+        q.a += q.norm();
+        return q.normalise();
+    }
+}
 Quaternion.applyRotation = function(q, vec){
     if(q instanceof Quaternion){
         q = q.unit();
@@ -121,41 +136,41 @@ Quaternion.applyRotation = function(q, vec){
     
 }
 Quaternion.slerp = function(q0, q1, t){
-	var v0 = q0.normalise();
-	var v1 = q1.normalise();
-	var threshold = 0.9995;
-	
-	var dot = v0.dot(v1);
-	if(dot < 0){
-		v1 = v1.scale(-1);;
-		dot = -dot;
-	}
-	if(dot > threshold){
-		return Quaternion.nlerp(v0, v1, t);
-	}
-	dot = Math.min( Math.max(dot, -1), 1);
-	var Omega = Math.acos(dot);
-	var s0 = Math.sin((1-t)*Omega) / Math.sin(Omega);
-	var s1 =  Math.sin(t*Omega) / Math.sin(Omega);
-	
-	var r0 = v0.scale(s0);
-	var r1 = v0.scale(s1);
-	
-	var result = r0.add(r1);
-	return result.normalise();
+    var v0 = q0.normalise();
+    var v1 = q1.normalise();
+    var threshold = 0.9995;
+    
+    var dot = v0.dot(v1);
+    if(dot < 0){
+        v1 = v1.scale(-1);;
+        dot = -dot;
+    }
+    if(dot > threshold){
+        return Quaternion.nlerp(v0, v1, t);
+    }
+    dot = Math.min( Math.max(dot, -1), 1);
+    var Omega = Math.acos(dot);
+    var s0 = Math.sin((1-t)*Omega) / Math.sin(Omega);
+    var s1 =  Math.sin(t*Omega) / Math.sin(Omega);
+    
+    var r0 = v0.scale(s0);
+    var r1 = v1.scale(s1);
+    
+    var result = r0.add(r1);
+    return result.normalise();
 }
 Quaternion.nlerp = function(q0, q1, t){
-	var v0 = q0.normalise();
-	var v1 = q1.normalise();
-	
-	var dot = v0.dot(v1);
-	if(dot < 0){
-		v1 = v1.scale(-1);;
-		dot = -dot;
-	}
-	
-	var result = v0.add( ( v1.add(v0.scale(-1)) ).scale(t) );
-	return result.normalise();
+    var v0 = q0.normalise();
+    var v1 = q1.normalise();
+    
+    var dot = v0.dot(v1);
+    if(dot < 0){
+        v1 = v1.scale(-1);;
+        dot = -dot;
+    }
+    
+    var result = v0.add( ( v1.add(v0.scale(-1)) ).scale(t) );
+    return result.normalise();
 }
 
 function isObject(obj) {
@@ -167,46 +182,7 @@ function isNumeric(n) {
 
 var Argo = new function() {
 
-    this.getHorizontalCoords = function(ra, dec, now, loc){
-        var lst = localMST(now, loc.lat, loc.long); //in hours
-        var H = (lst*15 - ra)* Math.PI/180; //deg to radians
-        var q = loc.lat* Math.PI/180; //deg to radians
-        var d = dec * Math.PI/180; //deg to radians
-        var alt = Math.asin(Math.sin(q)*Math.sin(d) + Math.cos(q)*Math.cos(d)*Math.cos(H)); //currently in radians
-        var azi = Math.atan2(Math.sin(H),Math.cos(H)*Math.sin(q) - Math.tan(d)*Math.cos(q)); //currently in radians
-        
-        var x = Math.cos(alt)*Math.sin(azi);
-        var y = Math.cos(alt)*Math.cos(azi);
-        var z = Math.sin(alt);
-        return [x, y, z];
-    }
-	
-	this.getRotatedCoords = function(ra, dec, now, loc, view){
-		var pos = this.getHorizontalCoords(ra, dec, now, loc);
-        var newpos = Quaternion.applyRotation(view.rot, pos);
-		
-		return newpos;
-	}
-
-    this.getProjectedLocation = function(ra, dec, now, loc, view){
-        var newpos = this.getRotatedCoords(ra, dec, now, loc, view);
-        
-        var xx = 2*newpos[0] /(1+newpos[2]) * view.zoom;
-        var yy = 2*newpos[1] /(1+newpos[2]) * view.zoom;
-        return {'x': xx, 'y': yy};
-        
-    }
-	
-	this.getProjectedCircle = function(ra, dec, diameter, now, loc, view){
-		var newpos = this.getRotatedCoords(ra, dec, now, loc, view);
-		var rawDiameter = diameter * Math.PI/(60 * 180);
-				
-        var xx = 2*newpos[0] /( Math.cos(rawDiameter) +newpos[2]) * view.zoom;
-        var yy = 2*newpos[1] /( Math.cos(rawDiameter) +newpos[2]) * view.zoom;
-		var angularDiameter = 2*Math.sin(rawDiameter)/(Math.cos(rawDiameter) + newpos[2]) * view.zoom;
-        return {'x': xx, 'y': yy, 'ad': angularDiameter};
-	}
-
+    //Star object
 
     function Star(starData) {
         var t = this;
@@ -231,28 +207,28 @@ var Argo = new function() {
         // this.dec = starData.dec;
         // this.spectral = starData.spectral;
         // this.mag = starData.mag;
-		
-		this.colourFromBV = Star.colourFromBV(this.bv);
+        
+        this.colourFromBV = Star.colourFromBV(this.bv);
 
         this.draw = function(now, loc, view, ctx){
             var coords = Argo.getProjectedLocation(this.ra, this.dec, now, loc, view);
-			var w = ctx.canvas.width; var h = ctx.canvas.height;
-			var vmin = Math.min(w,h); var vmax = Math.max(w, h); var ratio = vmax/vmin;
-			if(Math.abs(coords.x) > ratio || Math.abs(coords.y) > ratio){
-				return;
-			} else {
-				var left = (w + coords.x*vmin)/2;
-				var top = (h + coords.y*vmin)/2;
-				var d =(6 - this.mag) * Math.sqrt(view.zoom);
-				var colour = Star.spectrals[this.spectral];
-				//var colour = this.colourFromBV;
-				ctx.beginPath();
-				ctx.fillStyle=colour;
-				ctx.arc(left,top,d/2,0,2*Math.PI);
-				ctx.fill();
-				ctx.closePath();
-			}
-			
+            var w = ctx.canvas.width; var h = ctx.canvas.height;
+            var vmin = Math.min(w,h); var vmax = Math.max(w, h); var ratio = vmax/vmin;
+            if(Math.abs(coords.x) > ratio || Math.abs(coords.y) > ratio){
+                return;
+            } else {
+                var left = (w + coords.x*vmin)/2;
+                var top = (h + coords.y*vmin)/2;
+                var d = (6 - this.mag) * Math.sqrt(view.zoom);
+                var colour = Star.spectrals[this.spectral];
+                //var colour = this.colourFromBV;
+                ctx.beginPath();
+                ctx.fillStyle=colour;
+                ctx.arc(left,top,d/2,0,2*Math.PI);
+                ctx.fill();
+                ctx.closePath();
+            }
+            
         }
     }
 
@@ -327,6 +303,8 @@ var Argo = new function() {
         return "rgb(" + arr.join(",") + ")";
     }
 
+    //Messier object
+
     function Messier(messierData){
         var t = this;
         if(!(t instanceof Messier)){
@@ -335,7 +313,7 @@ var Argo = new function() {
         var props = {
             "ra" : 0,
             "dec" : 0,
-            "diameter" : 0
+            "diameter" : 0 //arcmin
         }
         for(var p in props){
             if(isObject(messierData) && (p in messierData)){
@@ -347,46 +325,119 @@ var Argo = new function() {
         // this.ra = messierData.ra;
         // this.dec = messierData.dec;
         // this.diameter = messierData.diameter;
-		
-		this.draw = function(now, loc, view, ctx){
-            var coords = Argo.getProjectedCircle(this.ra, this.dec, this.diameter, now, loc, view);
-			var w = ctx.canvas.width; var h = ctx.canvas.height;
-			var vmin = Math.min(w,h); var vmax = Math.max(w, h); var ratio = vmax/vmin;
-			if(Math.abs(coords.x) > ratio || Math.abs(coords.y) > ratio){
-				return;
-			} else {
-				var left = (w + coords.x*vmin)/2;
-				var top = (h + coords.y*vmin)/2;
-				var d = coords.ad * vmin/2;
-				var colour = "red";
-				ctx.beginPath();
-				ctx.strokeStyle=colour;
-				ctx.arc(left,top,d/2,0,2*Math.PI);
-				ctx.stroke();
-				ctx.closePath();
-			}
-			
+        
+        this.draw = function(now, loc, view, ctx){
+            var coords = Argo.getProjectedCircle(this.ra, this.dec, this.diameter/(2 * 60), now, loc, view);
+            var w = ctx.canvas.width; var h = ctx.canvas.height;
+            var vmin = Math.min(w,h); var vmax = Math.max(w, h); var ratio = vmax/vmin;
+            if(Math.abs(coords.x) > ratio || Math.abs(coords.y) > ratio){
+                return;
+            } else {
+                var left = (w + coords.x*vmin)/2;
+                var top = (h + coords.y*vmin)/2;
+                var ar = coords.ar * vmin/2;
+                var colour = "red";
+                ctx.beginPath();
+                ctx.strokeStyle=colour;
+                ctx.arc(left,top,ar,0,2*Math.PI);
+                ctx.stroke();
+                ctx.closePath();
+            }
+            
         }
     }
+
+
+    //Argo properties
 
     this.stars = [];
     this.messiers = [];
 
+    this.time = 0;
+    this.view = {
+        'rot' : new Quaternion(1, 0, 0, 0),
+        'zoom' : 1
+    };
+    this.loc = {
+        'lat' : 0, //positive northwards
+        'long' : 0 //positive westwards
+    };
+
     this.fps = 30;
+    this.fpsTracker = [];
+    this.deltams = 1000/this.fps;
+    this.delta = 1/this.fps;
+    this.timestamp = null;
     this.workerID = null;
-	this.viewRotSpeed = 15 * Math.PI/180; //rad per second
-	this.viewZoomSpeed = 2; //factor per second
-	this.viewZoomMin = 0.25;
-	this.viewZoomMax = 10;
-	
-	this.viewShiftDuration = 1; //second;
-	this.viewShiftCountdown = 0;
-	
-	this.canvas = null;
-	this.ctx = null;
-	this.activeKeys = [];
-	
-	function loadData(_argo, data){
+
+    this.viewRotSpeed = 15 * Math.PI/180; //rad per second
+    this.viewZoomSpeed = 2; //factor per second
+    this.viewZoomMin = 0.25;
+    this.viewZoomMax = 10;
+    this.viewShiftDuration = 1; //second;
+    this.viewShiftCountdown = 0;
+    
+    this.viewSize = {
+        w : 1,
+        h : 1
+    }    
+    this.canvas = null;
+    this.ctx = null;
+    this.activeKeys = [];
+    this.menuOpen = false;
+    this.mouse = {
+        isDown : false,
+        startPos : {x : 0, y : 0},
+        startRot : new Quaternion(1, 0, 0, 0),
+        startVec : [0,0,1],
+        currentPos : {x : 0, y : 0},
+        currentRot : new Quaternion(1, 0, 0, 0),
+        currentVec : [0,0,1],
+        dragStart : function(evt){
+            Argo.mouse.isDown = true;
+            Argo.mouse.startPos = {
+                x : evt.clientX,
+                y : evt.clientY
+            };
+            var coords = Argo.getCoordsFromCanvas(Argo.mouse.startPos.x, Argo.mouse.startPos.y);
+            Argo.mouse.startVec = Argo.getReverseProject(coords.x, coords.y, Argo.view);
+            Argo.mouse.startRot = Argo.view.rot;
+            window.addEventListener("mousemove", Argo.mouse.dragHandler);
+        },
+        dragHandler : function(evt){
+            Argo.mouse.currentPos = {
+                x : evt.clientX,
+                y : evt.clientY
+            };
+            var coords = Argo.getCoordsFromCanvas(Argo.mouse.currentPos.x, Argo.mouse.currentPos.y);
+            Argo.mouse.currentVec = Argo.getReverseProject(coords.x, coords.y, Argo.view);
+            Argo.mouse.currentRot = Quaternion.fromTwoVectors(Argo.mouse.startVec,Argo.mouse.currentVec);
+            Argo.view.rot = Argo.mouse.currentRot.multiply(Argo.mouse.startRot);
+        },
+        dragEnd : function(evt){
+            Argo.mouse.isDown = false;
+            window.removeEventListener("mousemove", Argo.mouse.dragHandler);
+            Argo.mouse.startPos = {
+                x : 0,
+                y : 0
+            };
+            Argo.mouse.currentPos = {
+                x : 0,
+                y : 0
+            };
+        },
+        
+    };
+    
+    this.settings = {
+        'layers' : {
+            'stars' : true,
+            'messiers' : false,
+            'grid' : false
+        }
+    };
+    
+    function loadData(_argo, data){
         if(isObject(data)){
             if("stars" in data){
                 for(s of data["stars"]){
@@ -401,214 +452,364 @@ var Argo = new function() {
             }
         }
     }
-	
+    
     this.initialise = function(){
         loadData(this, data);
         this.time = new Date();
-        this.loc = {
-            'lat' : 0, //positive northwards
-            'long' : 0 //positive westwards
-        }
+        this.setLocation(0, 0);
         this.view = {
             'rot' : new Quaternion(1, 0, 0, 0),
             'zoom' : 1
         }
-		this.canvas = document.getElementsByTagName("canvas"); //HTMLCollection; access members by id name
-		for(var i = 0; i < this.canvas.length; i++){
-			this.resizeCanvas(this.canvas[i], window.innerWidth, window.innerHeight);
-			if(!this.ctx){
-				this.ctx = {};
-			}
-			this.ctx[ this.canvas[i].id ] = this.canvas[i].getContext("2d");
-		}
-		
-		
-		window.addEventListener("keydown", function(evt){
-			var i = Argo.activeKeys.indexOf(evt.keyCode);
-			if(i < 0){
-				Argo.activeKeys.push(evt.keyCode);
-			}
-		});
-		window.addEventListener("keyup", function(evt){
-			var i = Argo.activeKeys.indexOf(evt.keyCode);
-			if(i >= 0){
-				Argo.activeKeys.splice(i,1);
-			}
-		});
-		window.addEventListener("resize", function(evt){
-			windowResize();
-		});
-
-        this.workerID = window.setInterval( (function(_t){
-            return function(){
-                _t.timeStep();
+        this.viewSize = {
+            w : window.innerWidth,
+            h : window.innerHeight
+        }
+        this.canvas = document.getElementsByTagName("canvas"); //HTMLCollection; access members by id name
+        for(var i = 0; i < this.canvas.length; i++){
+            this.resizeCanvas(this.canvas[i], this.viewSize.w, this.viewSize.h);
+            if(!this.ctx){
+                this.ctx = {};
             }
-        })(this), Math.floor(1000/this.fps) );
-    }
-	function windowResize(){
-		for(var i = 0; i < Argo.canvas.length; i++){
-			Argo.resizeCanvas(Argo.canvas[i], window.innerWidth, window.innerHeight);
-		}
-	}
-	
-	this.resizeCanvas = function(canvas, width, height){
-		canvas.width = width;
-		canvas.height = height;
-	}
+            this.ctx[ this.canvas[i].id ] = this.canvas[i].getContext("2d");
+        }
+        
 
-    this.timeStep = function(){
+        if(!Argo.statusBarInitialised){
+            Argo.initialiseStatusBar();
+        }
+
+        //event listeners
+        
+        window.addEventListener("keydown", function(evt){
+            var i = Argo.activeKeys.indexOf(evt.keyCode);
+            if(i < 0){
+                Argo.activeKeys.push(evt.keyCode);
+            }
+        });
+        window.addEventListener("keyup", function(evt){
+            var i = Argo.activeKeys.indexOf(evt.keyCode);
+            if(i >= 0){
+                Argo.activeKeys.splice(i,1);
+            }
+        });
+        window.addEventListener("resize", function(evt){
+            windowResize();
+        });
+        window.addEventListener("wheel", function(evt){
+            if(evt.deltaY < 0){
+                zoomView(+5);
+            } else if (evt.deltaY > 0){
+                zoomView(-5);
+            }
+        });
+        document.addEventListener("mousedown", Argo.mouse.dragStart);
+        document.addEventListener("mouseup", Argo.mouse.dragEnd);
+
+        this.play();
+    }
+    
+    this.play = function(){
+        nextFrame();
+    }
+    this.pause = function(){
+        cancelFrame();
+    }
+    
+    function nextFrame(){
+        Argo.workerID = window.requestAnimationFrame( function(timestamp){ Argo.timeStep(timestamp); } );
+    }
+    function cancelFrame(){
+        window.cancelAnimationFrame( Argo.workerID );
+    }
+    
+    function windowResize(){
+        Argo.viewSize = {
+            w : window.innerWidth,
+            h : window.innerHeight
+        }
+        for(var i = 0; i < Argo.canvas.length; i++){
+            Argo.resizeCanvas(Argo.canvas[i], Argo.viewSize.w, Argo.viewSize.h);
+        }
+    }
+    
+    this.resizeCanvas = function(canvas, width, height){
+        canvas.width = width;
+        canvas.height = height;
+    }
+
+    this.timeStep = function(newTimestamp){
+        nextFrame();
+
+        //timing stuff
+        var prevTimestamp = this.timestamp || 0;
+        this.timestamp = newTimestamp;
+        if( (prevTimestamp) && (newTimestamp) && (prevTimestamp < newTimestamp) ){
+            //this.fps = (this.fps * prevTimestamp / 1000 + 1)/(newTimestamp / 1000);
+            this.deltams = newTimestamp - prevTimestamp;
+            this.delta = this.deltams/1000;
+            this.fps = 1000/this.deltams;
+        }
+        this.fpsTracker.push(this.fps);
+        if(this.fpsTracker.length > 60){
+            this.fpsTracker.shift();
+        }
+        var sum = 0;
+        for(var i = 0; i < this.fpsTracker.length; i++){
+            sum += this.fpsTracker[i];
+        }
+        this.fpsAvg = sum/this.fpsTracker.length;
+        
+        
         this.time = new Date();
         var now = this.time;
-		handleView(this.activeKeys);
+        handleView(this.activeKeys);
         this.draw(now);
+        this.updateStatus(now);
     }
 
     this.draw = function(now){
-		//clear canvases
-		for(var c in this.ctx){
-			var ctx = this.ctx[c];
-			ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-		}
-		
-		//handle each layer
-        for(var i = 0; i < this.stars.length; i++){
-            this.stars[i].draw(now, this.loc, this.view, this.ctx["stars"]);
+        //clear canvases
+        for(var c in this.ctx){
+            var ctx = this.ctx[c];
+            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
         }
-		
-		for(var i = 0; i < this.messiers.length; i++){
-            this.messiers[i].draw(now, this.loc, this.view, this.ctx["messiers"]);
+        
+        //handle each layer
+        if(this.settings.layers["stars"]){
+            for(var i = 0; i < this.stars.length; i++){
+                this.stars[i].draw(now, this.loc, this.view, this.ctx["stars"]);
+            }
+        }
+        
+        if(this.settings.layers["messiers"]){
+            for(var i = 0; i < this.messiers.length; i++){
+                this.messiers[i].draw(now, this.loc, this.view, this.ctx["messiers"]);
+            }
         }
     }
-	
-	function handleView(keyCodes){
-		if(Argo.viewShiftCountdown > 0){
-			shiftView();
-		} else {
-			handleViewKeys(keyCodes);
-		}
-	}
-	
-	function handleViewKeys(keyCodes){
-		var isShiftActive = 0;
-		if(keyCodes.indexOf(16)>=0){ //shift
-			isShiftActive = 1;
-		}
-		for(var i = 0; i < keyCodes.length; i++){
-			var code = keyCodes[i];
-			var zoom = Math.pow(Argo.viewZoomSpeed, 1/Argo.fps);
-			var angle = (Argo.viewRotSpeed / Argo.fps)/ Argo.view.zoom * (1 + isShiftActive);
-			switch(code){
-				case 90: //z
-					Argo.view.zoom = Math.min(Argo.viewZoomMax, Argo.view.zoom * zoom);
-					break;
-				case 88: //x
-					Argo.view.zoom = Math.max(Argo.viewZoomMin, Argo.view.zoom / zoom);
-					break;
-				case 37: //left
-				case 65: //a
-					var q = Quaternion.fromAxisAngle([0,1,0], angle);
-					Argo.view.rot = Argo.view.rot.premultiply(q);
-					break;
-				case 39: //right
-				case 68: //d
-					var q = Quaternion.fromAxisAngle([0,1,0], -angle);
-					Argo.view.rot = Argo.view.rot.premultiply(q);
-					break;
-				case 38: //up
-				case 87: //w
-					var q = Quaternion.fromAxisAngle([1,0,0], -angle);
-					Argo.view.rot = Argo.view.rot.premultiply(q);
-					break;
-				case 40: //down
-				case 83: //s
-					var q = Quaternion.fromAxisAngle([1,0,0], angle);
-					Argo.view.rot = Argo.view.rot.premultiply(q);
-					break;
-				case 81: //q
-					var q = Quaternion.fromAxisAngle([0,0,1], -angle);
-					Argo.view.rot = Argo.view.rot.premultiply(q);
-					break;
-				case 69: //e
-					var q = Quaternion.fromAxisAngle([0,0,1], angle);
-					Argo.view.rot = Argo.view.rot.premultiply(q);
-					break;
-				case 82: //r
-					startShiftReset();
-					break;
-			}
-		}
-		
-	}
-	
-	function zoomView(keyCodes){
-		
-	}
-	
-	function rotateView(keyCodes){
-		for(var i = 0; i < keyCodes.length; i++){
-			var code = keyCodes[i];
-			var angle = Argo.viewRotSpeed / Argo.fps;
-			angle /= Argo.view.zoom;
-			switch(code){
-				
-			}
-		}
-	}
-	
-	function startShiftView(startRot, endRot, startZoom, endZoom){
-		Argo.view.startRot = startRot;
-		Argo.view.endRot = endRot;
-		Argo.view.startZoom = startZoom;
-		Argo.view.endZoom = endZoom;
-		Argo.viewShiftCountdown = Argo.viewShiftDuration * Argo.fps;
-	}
-	function startShiftReset(){
-		startShiftView(Argo.view.rot, new Quaternion(1,0,0,0), Argo.view.zoom, 1);
-	}
-	
-	function shiftView(){
-		if(Argo.viewShiftCountdown > 0){
-			Argo.viewShiftCountdown -= 1;
-			var t = 1 - ( Argo.viewShiftCountdown / (Argo.viewShiftDuration * Argo.fps) );
-			t = Math.min( Math.max(t, 0), 1);
-			var x = (function smooth(t){
-				if(t>0.5){
-					return 1 - 2*(1-t)*(1-t);
-				} else {
-					return 2*t*t;
-				}
-			})(t);
-			if(!(Argo.view.startRot && Argo.view.endRot)){
-				endShiftView();
-				startShiftReset();
-				return;
-			} else {
-				Argo.view.rot = Quaternion.nlerp(Argo.view.startRot, Argo.view.endRot, x);
-				Argo.view.zoom = (function(startZoom, endZoom, t){
-					if(!(startZoom > 0)){
-						startZoom = 1;
-					}
-					if(!(endZoom > 0)){
-						endZoom = 1;
-					}
-					return startZoom * Math.pow(endZoom/startZoom, t); 
-				})(Argo.view.startZoom, Argo.view.endZoom, x);
-			}
-		} else {
-			Argo.view.rot = Argo.view.endRot;
-			Argo.view.zoom = Argo.view.endZoom;
-			endShiftView();
-		}
-	}
-	
-	function endShiftView(){
-		
-		Argo.view.startRot = null;
-		Argo.view.endRot = null;
-		Argo.view.startZoom = null;
-		Argo.view.endZoom = null;
-		Argo.viewShiftCountdown = 0; //just be sure
-	}
+    
+    function handleView(keyCodes){
+        if(Argo.viewShiftCountdown > 0){
+            shiftView();
+        } else if(!Argo.menuOpen){
+            handleViewKeys(keyCodes);
+        }
+    }
+    
+    function handleViewKeys(keyCodes){
+        var isShiftActive = 0;
+        if(keyCodes.indexOf(16)>=0){ //shift
+            isShiftActive = 1;
+        }
+        for(var i = 0; i < keyCodes.length; i++){
+            var code = keyCodes[i];
+            var zoom = Math.pow(Argo.viewZoomSpeed, Argo.delta);
+            var angle = (Argo.viewRotSpeed * Argo.delta) * (1 + isShiftActive);
+            var scaledangle = angle / Argo.view.zoom;
+            switch(code){
+                case 90: //z
+                    zoomView(+1);
+                    break;
+                case 88: //x
+                    zoomView(-1);
+                    break;
+                case 37: //left
+                case 65: //a
+                    var q = Quaternion.fromAxisAngle([0,1,0], -scaledangle);
+                    Argo.view.rot = Argo.view.rot.premultiply(q);
+                    break;
+                case 39: //right
+                case 68: //d
+                    var q = Quaternion.fromAxisAngle([0,1,0], scaledangle);
+                    Argo.view.rot = Argo.view.rot.premultiply(q);
+                    break;
+                case 38: //up
+                case 87: //w
+                    var q = Quaternion.fromAxisAngle([1,0,0], scaledangle);
+                    Argo.view.rot = Argo.view.rot.premultiply(q);
+                    break;
+                case 40: //down
+                case 83: //s
+                    var q = Quaternion.fromAxisAngle([1,0,0], -scaledangle);
+                    Argo.view.rot = Argo.view.rot.premultiply(q);
+                    break;
+                case 81: //q
+                    var q = Quaternion.fromAxisAngle([0,0,1], -angle);
+                    Argo.view.rot = Argo.view.rot.premultiply(q);
+                    break;
+                case 69: //e
+                    var q = Quaternion.fromAxisAngle([0,0,1], angle);
+                    Argo.view.rot = Argo.view.rot.premultiply(q);
+                    break;
+                case 82: //r
+                    startShiftReset();
+                    break;
+            }
+        }
+        
+    }
+
+    function zoomView(rate){
+        var zoom = Math.pow(Argo.viewZoomSpeed, Argo.delta*rate);
+        // if(rate > 0){
+        //     Argo.view.zoom = Math.min(Argo.viewZoomMax, Argo.view.zoom * zoom);
+        // } else if (rate < 0){
+        //     Argo.view.zoom = Math.max(Argo.viewZoomMin, Argo.view.zoom / zoom);
+        // }
+        Argo.view.zoom = clamp(Argo.view.zoom * zoom, Argo.viewZoomMin, Argo.viewZoomMax)
+    }
+    
+    function startShiftView(startRot, endRot, startZoom, endZoom){
+        Argo.view.startRot = startRot;
+        Argo.view.endRot = endRot;
+        Argo.view.startZoom = startZoom;
+        Argo.view.endZoom = endZoom;
+        Argo.viewShiftCountdown = Argo.viewShiftDuration;
+    }
+    function startShiftReset(){
+        startShiftView(Argo.view.rot, new Quaternion(1,0,0,0), Argo.view.zoom, 1);
+    }
+    
+    function shiftView(){
+        if(Argo.viewShiftCountdown > 0){
+            Argo.viewShiftCountdown -= Argo.delta;
+            var t = 1 - ( Argo.viewShiftCountdown / Argo.viewShiftDuration );
+            t = clamp(t, 0, 1);
+            var x = (function smooth(t){
+                return t*t*(3 - 2*t);
+            })(t);
+            if(!(Argo.view.startRot && Argo.view.endRot)){
+                endShiftView();
+                startShiftReset();
+                return;
+            } else {
+                Argo.view.rot = Quaternion.nlerp(Argo.view.startRot, Argo.view.endRot, x);
+                Argo.view.zoom = (function(startZoom, endZoom, t){
+                    if(!(startZoom > 0)){
+                        startZoom = 1;
+                    }
+                    if(!(endZoom > 0)){
+                        endZoom = 1;
+                    }
+                    return startZoom * Math.pow(endZoom/startZoom, t); 
+                })(Argo.view.startZoom, Argo.view.endZoom, x);
+            }
+        } else {
+            Argo.view.rot = Argo.view.endRot;
+            Argo.view.zoom = Argo.view.endZoom;
+            endShiftView();
+        }
+    }
+    
+    function endShiftView(){
+        
+        Argo.view.startRot = null;
+        Argo.view.endRot = null;
+        Argo.view.startZoom = null;
+        Argo.view.endZoom = null;
+        Argo.viewShiftCountdown = 0; //just be sure
+    }
+    
+    this.statusBarInitialised = false;
+    this.statusBarElems = {
+        spanTime : null,
+        spanLoc : null,
+        spanRot : null
+    }
+
+    this.initialiseStatusBar = function(){
+        var spanTime = document.getElementById("spanTime");
+        var spanLoc = document.getElementById("spanLoc");
+        var spanRot = document.getElementById("spanRot");
+    
+        if(!Argo.statusBarElems.spanTime){
+            Argo.statusBarElems.spanTime = spanTime;
+        }
+        if(!Argo.statusBarElems.spanLoc){
+            Argo.statusBarElems.spanLoc = spanLoc;
+        }
+        if(!Argo.statusBarElems.spanRot){
+            Argo.statusBarElems.spanRot = spanRot;
+        }
+
+        if(spanTime && spanLoc && spanRot){
+            this.statusBarInitialised = true;
+        }
+    }
+
+    //update every second... not as important
+    this.updateStatus = function(now){
+        if(!this.statusBarInitialised){
+            this.initialiseStatusBar();
+        }
+
+        function pad(number) {
+            if (number < 10) {
+                return '0' + number;
+            }
+            return number;
+        }
+        var date = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+        var tz = now.getTimezoneOffset();
+        var tzh = Math.floor(Math.abs(tz)/60);
+        var tzm = Math.abs(tz) % 60;
+        var tzs = (tz < 0 ? '+' : '-'); //flipped...
+        var timezone = tzs + pad(tzh) + pad(tzm);
+        Argo.statusBarElems.spanTime.innerText = date + ' ' + timezone;
+
+        var lattext = Math.abs(this.loc.lat).toFixed(3) + '°' + (this.loc.lat < 0 ? 'S' : 'N');
+        var longtext = Math.abs(this.loc.long).toFixed(3) + '°' + (this.loc.long < 0 ? 'E' : 'W');
+        Argo.statusBarElems.spanLoc.innerText = lattext + ', ' + longtext;
+
+        var invRot = this.view.rot.conjugate();
+        var cov = Quaternion.applyRotation(invRot, [0,0,1]);
+        var cl = Math.sqrt(cov[0]*cov[0] + cov[1]*cov[1] + cov[2]*cov[2]);
+        var alt = Math.asin(cov[2] / cl) * 180 / Math.PI;
+        var azi = ( Math.atan2(-cov[0], -cov[1]) ) * 180 / Math.PI;
+        if(cov[0] == 0 && cov[1] == 0){
+            azi = 0;
+        }
+        if(azi < 0){
+            azi += 360;
+        }
+        
+        var alttext = "Alt: " + alt.toFixed(2) + '°';
+        var azitext = "Azi: " + azi.toFixed(2) + '°';
+        var rottext = "Centre of view: " + alttext + ', ' + azitext;
+        var zoomtext = "Zoom: " + this.view.zoom.toFixed(2) + "×";
+
+        var f = 1/this.view.zoom;
+        var fov = 2 * (2 * Math.atan2(f, 2)) * 180 / Math.PI;
+        var fovtext = "FOV: " + fov.toPrecision(3) + '°';
+        Argo.statusBarElems.spanRot.innerText = rottext + " " + zoomtext + " " + fovtext + (Argo.viewShiftCountdown > 0 ? " (resetting...)" : "" );
+
+    }
+
+    //geolocation
+    
+    this.setLocation = function(lat, long){
+        lat = clamp(lat, -90, 90);
+        long = clamp(long, -180, 180);
+        this.loc = {
+            'lat' : lat, //positive northwards
+            'long' : long //positive westwards
+        };
+        return this.loc;
+    }
+
+    //misc math
+
+    function clamp(x, min, max){
+        if(min > max){
+            var m = min;
+            min = max;
+            max = m;
+        }
+        return Math.min(max, Math.max(min, x));
+    }
+    
+    //date and time methods
 
     function julianDay(theDate) {
         var Y = theDate.getUTCFullYear();
@@ -616,7 +817,7 @@ var Argo = new function() {
         var D = theDate.getUTCDate(); + (theDate.getUTCHours() + theDate.getUTCMinutes()/60 + theDate.getUTCSeconds()/3600 + theDate.getUTCMilliseconds()/3600000)/24;
         if(M<3){
             M = M+12;
-            Y = Y-1;	
+            Y = Y-1;    
         }
         var A = Math.floor(Y/100);
         var B = 2 - A + Math.floor(A/4);
@@ -629,7 +830,7 @@ var Argo = new function() {
         var D = theDate.getUTCDate();
         if(M<3){
             M = M+12;
-            Y = Y-1;	
+            Y = Y-1;    
         }
         var A = Math.floor(Y/100);
         var B = 2 - A + Math.floor(A/4);
@@ -650,9 +851,81 @@ var Argo = new function() {
         return (greenwichMST(now) - long/15)%24;
     }
 
+    //projection and coordinate methods
+
+    this.getHorizontalCoords = function(ra, dec, now, loc){
+        var lst = localMST(now, loc.lat, loc.long); //in hours
+        var H = (lst*15 - ra)* Math.PI/180; //deg to radians
+        var q = loc.lat* Math.PI/180; //deg to radians
+        var d = dec * Math.PI/180; //deg to radians
+        var alt = Math.asin(Math.sin(q)*Math.sin(d) + Math.cos(q)*Math.cos(d)*Math.cos(H)); //currently in radians
+        var azi = Math.atan2(Math.sin(H),Math.cos(H)*Math.sin(q) - Math.tan(d)*Math.cos(q)); //currently in radians
+        
+        var x = - Math.cos(alt)*Math.sin(azi);
+        var y = - Math.cos(alt)*Math.cos(azi);
+        var z = Math.sin(alt);
+        return [x, y, z];
+    }
+    
+    this.getRotatedCoords = function(ra, dec, now, loc, view){
+        var pos = this.getHorizontalCoords(ra, dec, now, loc);
+        var newpos = Quaternion.applyRotation(view.rot, pos);
+        
+        return newpos;
+    }
+
+    this.projectLocation = function(newpos, view){
+        var xx = - 2*newpos[0] /(1+newpos[2]) * view.zoom; //flipped left-right since we are looking inside the sphere
+        var yy = - 2*newpos[1] /(1+newpos[2]) * view.zoom; //flipped because canvas
+        return {'x': xx, 'y': yy};
+    }
+    this.getProjectedLocation = function(ra, dec, now, loc, view){
+        var newpos = this.getRotatedCoords(ra, dec, now, loc, view);
+        
+        return this.projectLocation(newpos, view);
+    }
+    
+    this.getProjectedCircle = function(ra, dec, radius, now, loc, view){
+        var newpos = this.getRotatedCoords(ra, dec, now, loc, view);
+        var rawRadius = radius * Math.PI/180;
+                
+        var xx = - 2*newpos[0] /( Math.cos(rawRadius) +newpos[2]) * view.zoom; //flipped left-right since we are looking inside the sphere
+        var yy = - 2*newpos[1] /( Math.cos(rawRadius) +newpos[2]) * view.zoom; //flipped because canvas
+        
+        var angularRadius = 2*Math.sin(rawRadius)/(Math.cos(rawRadius) + newpos[2]) * view.zoom;
+        return {'x': xx, 'y': yy, 'ar': angularRadius};
+    }
+    this.getCanvasLocation = function(x, y){
+        var w = Argo.viewSize.w;
+        var h = Argo.viewSize.h;
+        var vmin = Math.min(w,h);
+        //var vmax = Math.max(w,h);
+        //var ratio = vmax/vmin;
+        var left = (w + x*vmin)/2;
+        var top = (h + y*vmin)/2;
+        return {'left' : left, 'top' : top};
+    }
+    this.getCoordsFromCanvas = function(left, top){
+        var w = Argo.viewSize.w;
+        var h = Argo.viewSize.h;
+        var vmin = Math.min(w,h);
+        //var vmax = Math.max(w,h);
+        //var ratio = vmax/vmin;
+        var x = (2 * left - w)/vmin;
+        var y = (2 * top - h)/vmin;
+        return {'x' : x, 'y' : y};
+    }
+    this.getReverseProject = function(xp, yp, view){
+        xx = (-xp)/(view.zoom);
+        yy = (-yp)/(view.zoom);
+        var x = (4 * xx)/(4 + xx*xx + yy*yy);
+        var y = (4 * yy)/(4 + xx*xx + yy*yy);
+        var z = (4 - xx*xx - yy*yy)/(4 + xx*xx + yy*yy);
+        return [x,y,z];
+    }
 
 }();
 
-window.onload = function(){
+window.addEventListener("load", function(evt){
     Argo.initialise();
-}
+});

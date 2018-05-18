@@ -387,44 +387,36 @@ var Argo = new function() {
     this.menuOpen = false;
     this.mouse = {
         isDown : false,
-        startPos : {x : 0, y : 0},
-        startRot : new Quaternion(1, 0, 0, 0),
-        startVec : [0,0,1],
-        currentPos : {x : 0, y : 0},
-        currentRot : new Quaternion(1, 0, 0, 0),
-        currentVec : [0,0,1],
+        store : [],
+        Tracker : function(x, y){
+            this.pos = {'x' : x, 'y' : y};
+            var coords = Argo.getCoordsFromCanvas(x, y);
+            this.vec = Argo.getReverseProject(coords.x, coords.y, Argo.view);
+        },
+        updateStore : function(evt){
+            var t = new Argo.mouse.Tracker(evt.clientX, evt.clientY);
+            if(Argo.mouse.store.length > 1){
+                Argo.mouse.store.shift();
+            }
+            Argo.mouse.store.push(t);
+        },
         dragStart : function(evt){
             Argo.mouse.isDown = true;
-            Argo.mouse.startPos = {
-                x : evt.clientX,
-                y : evt.clientY
-            };
-            var coords = Argo.getCoordsFromCanvas(Argo.mouse.startPos.x, Argo.mouse.startPos.y);
-            Argo.mouse.startVec = Argo.getReverseProject(coords.x, coords.y, Argo.view);
-            Argo.mouse.startRot = Argo.view.rot;
+            Argo.mouse.updateStore(evt);
+            Argo.mouse.current = Argo.mouse.start;
             window.addEventListener("mousemove", Argo.mouse.dragHandler);
         },
         dragHandler : function(evt){
-            Argo.mouse.currentPos = {
-                x : evt.clientX,
-                y : evt.clientY
-            };
-            var coords = Argo.getCoordsFromCanvas(Argo.mouse.currentPos.x, Argo.mouse.currentPos.y);
-            Argo.mouse.currentVec = Argo.getReverseProject(coords.x, coords.y, Argo.view);
-            Argo.mouse.currentRot = Quaternion.fromTwoVectors(Argo.mouse.startVec,Argo.mouse.currentVec);
-            Argo.view.rot = Argo.mouse.currentRot.multiply(Argo.mouse.startRot);
+            Argo.mouse.updateStore(evt);
+            if(Argo.mouse.store.length > 1){
+                var delta = Quaternion.fromTwoVectors(Argo.mouse.store[0].vec,Argo.mouse.store[1].vec);
+                Argo.view.rot = Argo.view.rot.premultiply(delta);
+            }
         },
         dragEnd : function(evt){
             Argo.mouse.isDown = false;
             window.removeEventListener("mousemove", Argo.mouse.dragHandler);
-            Argo.mouse.startPos = {
-                x : 0,
-                y : 0
-            };
-            Argo.mouse.currentPos = {
-                x : 0,
-                y : 0
-            };
+            Argo.mouse.store = [];
         },
         
     };

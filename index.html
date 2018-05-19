@@ -57,6 +57,8 @@ div#menuLayer {
     overflow: auto;
 }
 div#menu {
+	width: 75%;
+	height: 75%;
 	max-width: 640px;
 	max-height: 480px;
 	background-color: rgba(0,0,0,0.5);
@@ -66,7 +68,7 @@ div#menu {
 	padding: 0.5em;
 	box-sizing: border-box;
 	position: relative;
-    overflow: auto;
+	overflow: auto;
 }
 div.menuBtn{
 	position: absolute;
@@ -106,12 +108,31 @@ div#statusBar {
 table {
     border: none;
 }
+table#statusTable{
+	box-sizing: border-box;
+}
 div#statusBar>table>tbody>tr>td + td {
     padding-left: 1em;
+}
+fieldset {
+	border: 1px solid rgba(127,127,127,0.5);
+}
+fieldset + fieldset {
+	margin-top: 0.5em;
 }
 ul#layerList {
 	list-style: none;
 	padding: 0;
+}
+span.key {
+    border: 1px solid grey;
+    width: 1.5em;
+    height: 1.5em;
+	margin: 0 0.1em;
+    display: inline-block;
+    text-align: center;
+    line-height: 1.5em;
+    vertical-align: middle;
 }
 h1,h2,h3,h4,h5,h6{
 	text-align: center;
@@ -129,41 +150,56 @@ h1,h2,h3,h4,h5,h6{
 <div id="menuLayer">
 <div style="display:table;width:100%;height:100%;">
 <div style="display:table-cell;vertical-align:middle;">
-<div id="menu">
-<div class="menuBtn" id="closeMenu">×</div>
-<h2>Settings</h2>
-<form>
-<fieldset>
-<legend>Display</legend>
-<ul id="layerList">
-<li><input type="checkbox" name="layers" id="chkstars" value="stars" checked/><label for="chkstars">Stars</label></li>
-<li><input type="checkbox" name="layers" id="chkmessiers" value="messiers"/><label for="chkmessiers">Messier objects</label></li>
-<li><input type="checkbox" name="layers" id="chkgridequatorial" value="gridequatorial"/><label for="chkequatorial">Equatorial grid (RA, Dec)</label></li>
-<li><input type="checkbox" name="layers" id="chkgridhorizontal" value="gridhorizontal"/><label for="chkgridhorizontal">Horizontal grid (Alt, Azi)</label></li>
-</ul>
-</fieldset>
-<fieldset>
-<legend>Location</legend>
-<table>
-<tbody>
-<tr><td colspan=3><button type="button" id="btnGeolocate">Use browser geolocation</button></td></tr>
-<tr><td><label for="inputlat">Latitude (&deg;)</label></td><td><input type="number" id="inputlat" name="lat"/></td>
-    <td><input type="radio" id="inputnorth" name="latHalf" value="n"/><label for="inputnorth">N</label></td>
-    <td><input type="radio" id="inputsouth" name="latHalf" value="s"/><label for="inputsouth">S</label></td></tr>
-<tr><td><label for="inputlong">Longitude (&deg;)</label></td><td><input type="number" id="inputlong" name="long"/></td>
-    <td><input type="radio" id="inputwest" name="longHalf" value="w"/><label for="inputwest">W</label></td>
-    <td><input type="radio" id="inputeast" name="longHalf" value="e"/><label for="inputeast">E</label></td></tr>
-<tr><td colspan=3><button type="button" id="btnSetLocation">Set location</button></td></tr>
-</tbody>
-</table>
-</fieldset>
-</form>
-</div>
+	<div id="menu">
+		<div class="menuBtn" id="closeMenu">×</div>
+		<div id="settingsdiv">
+		<h2>Settings</h2>
+		<form>
+		<fieldset>
+		<legend>Display</legend>
+		<ul id="layerList">
+		<li><input type="checkbox" name="layers" id="chkstars" value="stars" checked/><label for="chkstars">Stars</label></li>
+		<li><input type="checkbox" name="layers" id="chkmessiers" value="messiers"/><label for="chkmessiers">Messier objects</label></li>
+		<li><input type="checkbox" name="layers" id="chkgridequatorial" value="gridequatorial"/><label for="chkequatorial">Equatorial grid (RA, Dec)</label></li>
+		<li><input type="checkbox" name="layers" id="chkgridhorizontal" value="gridhorizontal"/><label for="chkgridhorizontal">Horizontal grid (Alt, Azi)</label></li>
+		</ul>
+		</fieldset>
+		<fieldset>
+		<legend>Location</legend>
+		<table>
+		<tbody>
+		<tr><td colspan=3><button type="button" id="btnGeolocate">Use browser geolocation</button></td></tr>
+		<tr><td><label for="inputlat">Latitude (&deg;)</label></td><td><input type="number" id="inputlat" name="lat"/></td>
+			<td><input type="radio" id="inputnorth" name="latHalf" value="n"/><label for="inputnorth">N</label></td>
+			<td><input type="radio" id="inputsouth" name="latHalf" value="s"/><label for="inputsouth">S</label></td></tr>
+		<tr><td><label for="inputlong">Longitude (&deg;)</label></td><td><input type="number" id="inputlong" name="long"/></td>
+			<td><input type="radio" id="inputwest" name="longHalf" value="w"/><label for="inputwest">W</label></td>
+			<td><input type="radio" id="inputeast" name="longHalf" value="e"/><label for="inputeast">E</label></td></tr>
+		<tr><td colspan=3><button type="button" id="btnSetLocation">Set location</button></td></tr>
+		</tbody>
+		</table>
+		</fieldset>
+		</form>
+		</div>
+		<div id="controlsdiv">
+		<h2>Controls</h2>
+		<table>
+		<tbody>
+		<tr><td>Pan view</td><td><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span>,<span class="key">&uparrow;</span><span class="key">&downarrow;</span><span class="key">&leftarrow;</span><span class="key">&rightarrow;</span>, click and drag</td></tr>
+		<tr><td>Rotate view</td><td><span class="key">Q</span><span class="key">E</span></td></tr>
+		<tr><td>Zoom view</td><td><span class="key">Z</span><span class="key">X</span></td></tr>
+		<tr><td>Reset view</td><td><span class="key">R</span></td></tr>
+		<tr><td>Time speed</td><td><span class="key">J</span><span class="key">K</span></td></tr>
+		<tr><td>Reset time</td><td><span class="key">L</span></td></tr>
+		</tbody>
+		</table>
+		</div>
+	</div>
 </div>
 </div>
 </div>
 <div class="menuBtn" id="openMenu">&#x2261;</div>
 <!-- &#x2699; gear -->
-<div id="statusBar"><table><tbody><tr><td>Time: <span id="spanTime"></span></td><td>Location: <span id="spanLoc"></span></td><td><span id="spanRot"></span></td></tr></tbody></table></div>
+<div id="statusBar"><table id="statusTable"><tbody><tr><td>Time: <span class="readout" id="spanTime"></span></td><td>Location: <span class="readout" id="spanLoc"></span></td><td><span class="readout" id="spanRot"></span></td></tr></tbody></table></div>
 </body>
 </html>

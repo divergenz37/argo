@@ -707,10 +707,12 @@ var Argo = new function() {
             windowResize();
         });
         window.addEventListener("wheel", function(evt){
-            if(evt.deltaY < 0){
-                zoomView(+5);
-            } else if (evt.deltaY > 0){
-                zoomView(-5);
+            if(!Argo.menuOpen){
+                if(evt.deltaY < 0){
+                    zoomView(+5);
+                } else if (evt.deltaY > 0){
+                    zoomView(-5);
+                }
             }
         });
         window.addEventListener("blur", function(evt){

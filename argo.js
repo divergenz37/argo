@@ -330,7 +330,7 @@ var Argo = new function() {
             var coords = Argo.getProjectedCircle(this.ra, this.dec, this.diameter/(2 * 60), now, loc, view);
             var w = ctx.canvas.width; var h = ctx.canvas.height;
             var vmin = Math.min(w,h); var vmax = Math.max(w, h); var ratio = vmax/vmin;
-            if(Math.abs(coords.x) > ratio || Math.abs(coords.y) > ratio){
+            if(Math.abs(coords.x) > (ratio + coords.ar) || Math.abs(coords.y) > (ratio + coords.ar)){
                 return;
             } else {
                 var left = (w + coords.x*vmin)/2;
@@ -347,13 +347,212 @@ var Argo = new function() {
         }
     }
 
+    //Grid circle object
+    function GridObj(){
+        this.plane = {
+            'a' : 0,
+            'b' : 0,
+            'c' : 0,
+            'd' : 0
+        };
+        this.setPlane = function(normal, point){
+            this.plane.a = normal[0];
+            this.plane.b = normal[1];
+            this.plane.c = normal[2];
+            this.plane.d = normal[0] * point[0] + normal[1] * point[1] + normal[2] * point[2];
+            return this.plane;
+        };
+        this.getShape = function(view){
+            var tolerance = 0.001;
+            if(Math.abs(this.plane.c + this.plane.d) < tolerance){
+                //line, Ax + By = C. 4ax + 4by = 4(c-d)
+                var A = 4 * this.plane.a / view.zoom;
+                var B = 4 * this.plane.b / view.zoom;
+                var C = 4 * (this.plane.c - this.plane.d);
+                return new Line(A, B, C);
+            } else {
+                //circle, (x - xc)^2 + (y - yc)^2 = r^2. xc = -2a/(c+d), yc = -2b/(c+d), r = 2sqrt(a^2 + b^2 + c^2 - d^2)/(c+d)
+                var xc = - (2 * this.plane.a)/(this.plane.c + this.plane.d) * view.zoom;
+                var yc = - (2 * this.plane.b)/(this.plane.c + this.plane.d) * view.zoom;
+                var r = Math.abs( (2 * Math.sqrt(this.plane.a * this.plane.a + this.plane.b * this.plane.b + this.plane.c * this.plane.c - this.plane.d * this.plane.d))/(this.plane.c + this.plane.d) * view.zoom );
+                return new Circle(xc, yc, r);
+            }
+        };
+        this.calculatePlane = function(now, loc, view, ctx){
+            this.setPlane([0,0,1],[0,0,0]);
+        };
+        this.draw = function(now, loc, view, ctx){
+            this.calculatePlane(now, loc, view, ctx);
+            var shape = this.getShape(view);
+            if("draw" in shape){
+                shape.draw(view, ctx, this.colour);
+            }
+        };
+        this.colour = "green";
+
+        function Line(A, B, C){
+            //Ax + By = C
+            this.A = A || 0;
+            this.B = B || 0;
+            this.C = C || 0;
+            
+            this.draw = function(view, ctx, colour){
+                var w = ctx.canvas.width; var h = ctx.canvas.height;
+                var vmin = Math.min(w,h); var vmax = Math.max(w, h); var ratio = vmax/vmin;
+                var tolerance = 0.001;
+
+                if(Math.abs(this.A) < tolerance && Math.abs(this.B) < tolerance){
+                    return;
+                } else if (Math.abs(this.A) < tolerance){ //By = C
+                    var yintercept = this.C / this.B;
+                    if(Math.abs(yintercept) > ratio){
+                        return;
+                    }
+                    var top = (h + yintercept*vmin)/2;
+                    ctx.beginPath();
+                    ctx.strokeStyle=colour;
+                    ctx.moveTo(0, top);
+                    ctx.lineTo(w, top);
+                    ctx.stroke();
+                    ctx.closePath();
+                } else if (Math.abs(this.B) < tolerance){ //Ax = C
+                    var xintercept = this.C / this.A;
+                    if(Math.abs(xintercept) > ratio){
+                        return;
+                    }
+                    var left = (w + xintercept*vmin)/2;
+                    ctx.beginPath();
+                    ctx.strokeStyle=colour;
+                    ctx.moveTo(left, 0);
+                    ctx.lineTo(left, h);
+                    ctx.stroke();
+                    ctx.closePath();
+                } else {
+                    var d = Math.abs(this.C)/Math.sqrt(this.A * this.A + this.B * this.B);
+                    if(d > ratio){
+                        return;
+                    }
+                    if(Math.abs(this.B) > Math.abs(this.A)){ //"flat" line
+                        var x0 = -ratio; var x1 = +ratio;
+                        var y0 = (this.C - this.A * x0)/this.B; var y1 = (this.C - this.A * x1)/this.B;
+                    } else { //"steep" line
+                        var y0 = -ratio; var y1 = +ratio;
+                        var x0 = (this.C - this.B * y0)/this.A; var x1 = (this.C - this.B * y1)/this.A;
+                    }
+                    ctx.beginPath();
+                    ctx.strokeStyle=colour;
+                    ctx.moveTo((w + x0*vmin)/2, (h + y0*vmin)/2);
+                    ctx.lineTo((w + x1*vmin)/2, (h + y1*vmin)/2);
+                    ctx.stroke();
+                    ctx.closePath();
+                }
+            }
+        }
+        function Circle(xc, yc, r){
+            this.xc = xc || 0;
+            this.yc = yc || 0;
+            this.r = r || 0;
+
+            this.draw = function(view, ctx, colour){
+                var w = ctx.canvas.width; var h = ctx.canvas.height;
+                var vmin = Math.min(w,h); var vmax = Math.max(w, h); var ratio = vmax/vmin;
+                if(Math.abs(this.xc) > (ratio + this.r) || Math.abs(this.yc) > (ratio + this.r)){
+                    return;
+                } else{
+                    var d = this.r - Math.sqrt(this.xc * this.xc + this.yc * this.yc);
+                    if(d > Math.sqrt(1 + ratio*ratio)){
+                        return;
+                    }
+                    var left = (w + this.xc*vmin)/2;
+                    var top = (h + this.yc*vmin)/2;
+                    var ar = this.r * vmin/2;
+                    ctx.beginPath();
+                    ctx.strokeStyle=colour;
+                    ctx.arc(left,top,ar,0,2*Math.PI);
+                    ctx.stroke();
+                    ctx.closePath();
+                }
+            }
+        }
+
+    }
+
+    function AziGridObj(azi){
+        azi = azi || 0;
+        var t = this;
+        if(!(t instanceof AziGridObj)){
+            return new AziGridObj(azi);
+        }
+        GridObj.call(this);
+        this.azi = azi;
+        this.calculatePlane = function(now, loc, view, ctx){
+            var normal = [Math.sin(this.azi * Math.PI/180 + Math.PI),Math.cos(this.azi * Math.PI/180 + Math.PI),0];
+            var rotNormal = Quaternion.applyRotation(Argo.view.rot, normal);
+            var rotPoint = [0,0,0]; //always passes through centre
+            this.setPlane(rotNormal, rotPoint);
+        }
+    }
+
+    function AltGridObj(alt){
+        alt = alt || 0;
+        var t = this;
+        if(!(t instanceof AltGridObj)){
+            return new AltGridObj(alt);
+        }
+        GridObj.call(this);
+        this.alt = alt;
+        this.calculatePlane = function(now, loc, view, ctx){
+            var normal = [0,0,1];
+            var point = [0,0,Math.sin(this.alt * Math.PI/180)];
+            var rotNormal = Quaternion.applyRotation(Argo.view.rot, normal);
+            var rotPoint = Quaternion.applyRotation(Argo.view.rot, point);
+            this.setPlane(rotNormal, rotPoint);
+        }
+    }
+
+    function RAGridObj(ra){
+        ra = ra || 0;
+        var t = this;
+        if(!(t instanceof RAGridObj)){
+            return new RAGridObj(ra);
+        }
+        GridObj.call(this);
+        this.ra = ra;
+        this.colour = "blue";
+        this.calculatePlane = function(now, loc, view, ctx){
+            var rotNormal = Argo.getRotatedCoords(this.ra, 0, now, loc, view);
+            var rotPoint = [0,0,0]; //always passes through centre
+            this.setPlane(rotNormal, rotPoint);
+        }
+    }
+
+    function DecGridObj(dec){
+        dec = dec || 0;
+        var t = this;
+        if(!(t instanceof DecGridObj)){
+            return new DecGridObj(dec);
+        }
+        GridObj.call(this);
+        this.dec = dec;
+        this.colour = "blue";
+        this.calculatePlane = function(now, loc, view, ctx){
+            var rotNormal = Argo.getRotatedCoords(0, 90, now, loc, view); //find where NCP is
+            var s = Math.sin(this.dec * Math.PI/180);
+            var rotPoint = [rotNormal[0] * s, rotNormal[1] * s, rotNormal[2] * s]; //scale by sin(dec)
+            this.setPlane(rotNormal, rotPoint);
+        }
+    }
+
 
     //Argo properties
 
     this.stars = [];
     this.messiers = [];
+    this.grid = {
+        equatorial : [],
+        horizontal : []
+    };
 
-    this.time = 0;
     this.view = {
         'rot' : new Quaternion(1, 0, 0, 0),
         'zoom' : 1
@@ -362,13 +561,6 @@ var Argo = new function() {
         'lat' : 0, //positive northwards
         'long' : 0 //positive westwards
     };
-
-    this.fps = 30;
-    this.fpsTracker = [];
-    this.deltams = 1000/this.fps;
-    this.delta = 1/this.fps;
-    this.timestamp = null;
-    this.workerID = null;
 
     this.viewRotSpeed = 15 * Math.PI/180; //rad per second
     this.viewZoomSpeed = 2; //factor per second
@@ -383,7 +575,10 @@ var Argo = new function() {
     }    
     this.canvas = null;
     this.ctx = null;
-    this.activeKeys = [];
+    this.keys = {
+        active : [],
+        shouldHandle : []
+    };
     this.menuOpen = false;
     this.mouse = {
         isDown : false,
@@ -401,16 +596,18 @@ var Argo = new function() {
             Argo.mouse.store.push(t);
         },
         dragStart : function(evt){
-            Argo.mouse.isDown = true;
-            Argo.mouse.updateStore(evt);
-            Argo.mouse.current = Argo.mouse.start;
-            window.addEventListener("mousemove", Argo.mouse.dragHandler);
+            if(!Argo.menuOpen){
+                Argo.mouse.isDown = true;
+                Argo.mouse.updateStore(evt);
+                Argo.mouse.current = Argo.mouse.start;
+                window.addEventListener("mousemove", Argo.mouse.dragHandler);
+            }
         },
         dragHandler : function(evt){
             Argo.mouse.updateStore(evt);
             if(Argo.mouse.store.length > 1){
-                var delta = Quaternion.fromTwoVectors(Argo.mouse.store[0].vec,Argo.mouse.store[1].vec);
-                Argo.view.rot = Argo.view.rot.premultiply(delta);
+                var q = Quaternion.fromTwoVectors(Argo.mouse.store[0].vec,Argo.mouse.store[1].vec);
+                Argo.view.rot = Argo.view.rot.premultiply(q);
             }
         },
         dragEnd : function(evt){
@@ -425,7 +622,8 @@ var Argo = new function() {
         'layers' : {
             'stars' : true,
             'messiers' : false,
-            'grid' : false
+            'gridequatorial' : false,
+            'gridhorizontal' : false
         }
     };
     
@@ -444,10 +642,25 @@ var Argo = new function() {
             }
         }
     }
+    function loadGrid(_argo){
+        for(var i = -8; i < 9; i++){
+            _argo.grid.horizontal.push( new AltGridObj(i*10) );
+        }
+        for(var j = -18; j < 18; j++){
+            _argo.grid.horizontal.push( new AziGridObj(j*10) );
+        }
+
+        for(var i = -8; i < 9; i++){
+            _argo.grid.equatorial.push( new DecGridObj(i*10) );
+        }
+        for(var j = 0; j < 24; j++){
+            _argo.grid.equatorial.push( new RAGridObj(j*15) );
+        }
+    }
     
     this.initialise = function(){
         loadData(this, data);
-        this.time = new Date();
+        loadGrid(this);
         this.setLocation(0, 0);
         this.view = {
             'rot' : new Quaternion(1, 0, 0, 0),
@@ -474,15 +687,20 @@ var Argo = new function() {
         //event listeners
         
         window.addEventListener("keydown", function(evt){
-            var i = Argo.activeKeys.indexOf(evt.keyCode);
+            var i = Argo.keys.active.indexOf(evt.keyCode);
             if(i < 0){
-                Argo.activeKeys.push(evt.keyCode);
+                Argo.keys.active.push(evt.keyCode);
+                Argo.keys.shouldHandle.push(evt.keyCode);
             }
         });
         window.addEventListener("keyup", function(evt){
-            var i = Argo.activeKeys.indexOf(evt.keyCode);
+            var i = Argo.keys.active.indexOf(evt.keyCode);
             if(i >= 0){
-                Argo.activeKeys.splice(i,1);
+                Argo.keys.active.splice(i,1);
+            }
+            var j = Argo.keys.shouldHandle.indexOf(evt.keyCode);
+            if(j >= 0){
+                Argo.keys.shouldHandle.splice(i,1);
             }
         });
         window.addEventListener("resize", function(evt){
@@ -495,6 +713,11 @@ var Argo = new function() {
                 zoomView(-5);
             }
         });
+        window.addEventListener("blur", function(evt){
+            Argo.keys.active = [];
+            Argo.keys.shouldHandle = [];
+            Argo.mouse.dragEnd();
+        })
         document.addEventListener("mousedown", Argo.mouse.dragStart);
         document.addEventListener("mouseup", Argo.mouse.dragEnd);
 
@@ -533,32 +756,57 @@ var Argo = new function() {
     this.timeStep = function(newTimestamp){
         nextFrame();
 
-        //timing stuff
-        var prevTimestamp = this.timestamp || 0;
-        this.timestamp = newTimestamp;
-        if( (prevTimestamp) && (newTimestamp) && (prevTimestamp < newTimestamp) ){
-            //this.fps = (this.fps * prevTimestamp / 1000 + 1)/(newTimestamp / 1000);
-            this.deltams = newTimestamp - prevTimestamp;
-            this.delta = this.deltams/1000;
-            this.fps = 1000/this.deltams;
-        }
-        this.fpsTracker.push(this.fps);
-        if(this.fpsTracker.length > 60){
-            this.fpsTracker.shift();
-        }
-        var sum = 0;
-        for(var i = 0; i < this.fpsTracker.length; i++){
-            sum += this.fpsTracker[i];
-        }
-        this.fpsAvg = sum/this.fpsTracker.length;
-        
-        
-        this.time = new Date();
-        var now = this.time;
-        handleView(this.activeKeys);
+        this.timer.step(newTimestamp);
+        var now = this.timer.now;
+        handleView(this.keys);
         this.draw(now);
         this.updateStatus(now);
     }
+
+    
+    function Timer(){
+        this.prevTimestamp = null;
+        this.timestamp = null;
+        this.fps = 30;
+        this.fpsAvg = 30;
+        this.fpsTracker = [];
+        this.deltams = 1000/this.fps;
+        this.delta = 1/this.fps;
+        this.now = null;
+        this.timeSpeed = 1;
+        this.step = function(newTimestamp){
+            this.prevTimestamp = this.timestamp;
+            this.timestamp = newTimestamp;
+            
+            if(this.prevTimestamp != null){
+                this.deltams = this.timestamp - this.prevTimestamp;
+                this.delta = this.deltams/1000;
+                this.fps = 1000/this.deltams;
+                this.fpsTracker.push(this.delta);
+                if(this.fpsTracker.length > 60){ this.fpsTracker.shift(); }
+                var sum = 0;
+                for(var i = 0; i<this.fpsTracker.length; i++){
+                    sum += this.fpsTracker[i];
+                }
+                if(sum > 0){ this.fpsAvg = this.fpsTracker.length / sum; }
+
+                if(this.now != null){
+                    var addTime = this.deltams * this.timeSpeed;
+                    this.now = new Date( this.now.getTime() + addTime );
+                } else {
+                    this.now = new Date();
+                }
+            } else {
+                this.now = new Date();
+            }
+
+        }
+        this.resetTime = function(){
+            this.timeSpeed = 1;
+            this.now = new Date();
+        }
+    }
+    this.timer = new Timer();
 
     this.draw = function(now){
         //clear canvases
@@ -579,27 +827,60 @@ var Argo = new function() {
                 this.messiers[i].draw(now, this.loc, this.view, this.ctx["messiers"]);
             }
         }
+
+        if(this.settings.layers["gridequatorial"]){
+            for(var i = 0; i < this.grid.equatorial.length; i++){
+                this.grid.equatorial[i].draw(now, this.loc, this.view, this.ctx["grid"]);
+            }
+        }
+        if(this.settings.layers["gridhorizontal"]){
+            for(var i = 0; i < this.grid.horizontal.length; i++){
+                this.grid.horizontal[i].draw(now, this.loc, this.view, this.ctx["grid"]);
+            }
+        }
     }
     
-    function handleView(keyCodes){
+    function handleView(keys){
         if(Argo.viewShiftCountdown > 0){
             shiftView();
         } else if(!Argo.menuOpen){
-            handleViewKeys(keyCodes);
+            handleViewKeys(keys);
         }
     }
     
-    function handleViewKeys(keyCodes){
+    function handleViewKeys(keys){
         var isShiftActive = 0;
-        if(keyCodes.indexOf(16)>=0){ //shift
+        if(keys.active.indexOf(16)>=0){ //shift
             isShiftActive = 1;
         }
-        for(var i = 0; i < keyCodes.length; i++){
-            var code = keyCodes[i];
-            var zoom = Math.pow(Argo.viewZoomSpeed, Argo.delta);
-            var angle = (Argo.viewRotSpeed * Argo.delta) * (1 + isShiftActive);
+        function stopHandling(code){
+            var shouldHandleIndex = keys.shouldHandle.indexOf(code);
+            if(shouldHandleIndex >= 0){
+                keys.shouldHandle.splice(shouldHandleIndex, 1);
+            }
+        }
+        for(var i = 0; i < keys.active.length; i++){
+            var code = keys.active[i];
+            var shouldHandleIndex = keys.shouldHandle.indexOf(code);
+            if(shouldHandleIndex < 0){
+                continue;
+            }
+            var zoom = Math.pow(Argo.viewZoomSpeed, Argo.timer.delta);
+            var angle = (Argo.viewRotSpeed * Argo.timer.delta) * (1 + isShiftActive);
             var scaledangle = angle / Argo.view.zoom;
             switch(code){
+                case 74: //j
+                    Argo.timer.timeSpeed /= 10;
+                    stopHandling(code);
+                    break;
+                case 75: //k
+                    Argo.timer.timeSpeed *= 10;
+                    stopHandling(code);
+                    break;
+                case 76: //l
+                    Argo.timer.resetTime();
+                    stopHandling(code);
+                    break;
                 case 90: //z
                     zoomView(+1);
                     break;
@@ -643,7 +924,7 @@ var Argo = new function() {
     }
 
     function zoomView(rate){
-        var zoom = Math.pow(Argo.viewZoomSpeed, Argo.delta*rate);
+        var zoom = Math.pow(Argo.viewZoomSpeed, Argo.timer.delta*rate);
         // if(rate > 0){
         //     Argo.view.zoom = Math.min(Argo.viewZoomMax, Argo.view.zoom * zoom);
         // } else if (rate < 0){
@@ -665,7 +946,7 @@ var Argo = new function() {
     
     function shiftView(){
         if(Argo.viewShiftCountdown > 0){
-            Argo.viewShiftCountdown -= Argo.delta;
+            Argo.viewShiftCountdown -= Argo.timer.delta;
             var t = 1 - ( Argo.viewShiftCountdown / Argo.viewShiftDuration );
             t = clamp(t, 0, 1);
             var x = (function smooth(t){
@@ -884,7 +1165,7 @@ var Argo = new function() {
         var xx = - 2*newpos[0] /( Math.cos(rawRadius) +newpos[2]) * view.zoom; //flipped left-right since we are looking inside the sphere
         var yy = - 2*newpos[1] /( Math.cos(rawRadius) +newpos[2]) * view.zoom; //flipped because canvas
         
-        var angularRadius = 2*Math.sin(rawRadius)/(Math.cos(rawRadius) + newpos[2]) * view.zoom;
+        var angularRadius = Math.abs(2*Math.sin(rawRadius)/(Math.cos(rawRadius) + newpos[2]) * view.zoom);
         return {'x': xx, 'y': yy, 'ar': angularRadius};
     }
     this.getCanvasLocation = function(x, y){

@@ -113,5 +113,21 @@ window.addEventListener("load", function(e){
 		updateLocation(lat, long);
 		
 	}
-	
+
+	//var chkmessiers = document.getElementById("chkmessiers");
+	//var chkgridequatorial = document.getElementById("chkgridequatorial");
+	//var chkgridhorizontal = document.getElementById("chkgridhorizontal");
+	var layerList = document.getElementById("layerList");
+	var layerCheckboxes = layerList.getElementsByTagName("input");
+	for(var i = 0; i < layerCheckboxes.length; i++){
+		layerCheckboxes[i].addEventListener("change", updateLayerSettings);
+	}
+
+	function updateLayerSettings(evt){
+		var val = evt.target.value;
+		var state = evt.target.checked;
+		if(val in Argo.settings.layers){
+			Argo.settings.layers[val] = state;
+		}
+	}
 });

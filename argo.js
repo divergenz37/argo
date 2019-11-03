@@ -58,6 +58,7 @@ var Quaternion = function(a, b, c, d){
         }
     }
 }
+Quaternion._threshold = 0.999999;
 Quaternion.sum = function(){
     var r = new Quaternion(0, 0, 0, 0);
     
@@ -110,12 +111,11 @@ Quaternion.fromAxisAngle = function(axis, angle){
     return new Quaternion( Math.cos(angle/2), Math.sin(angle/2) * axis[0], Math.sin(angle/2) * axis[1], Math.sin(angle/2) * axis[2]);
 }
 Quaternion.fromTwoVectors = function(u, v){
-    var threshold = 0.9995;
     var dot = u[0]*v[0] + u[1]*v[1] + u[2]*v[2];
     var nu = Math.sqrt(u[0]*u[0] + u[1]*u[1] + u[2]*u[2]);
     var nv = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
     var w = [ u[1]*v[2] - u[2]*v[1], u[2]*v[0] - u[0]*v[2], u[0]*v[1] - u[1]*v[0] ];
-    if(dot < (-threshold * nu * nv)){
+    if(dot < (-Quaternion._threshold * nu * nv)){
         w = Math.abs(u[0]) > Math.abs(u[2]) ? [-u[1], u[0], 0] : [0, -u[2], u[1]];
         return (new Quaternion(0, w[0], w[1], w[2])).normalise();
     } else {
@@ -138,14 +138,13 @@ Quaternion.applyRotation = function(q, vec){
 Quaternion.slerp = function(q0, q1, t){
     var v0 = q0.normalise();
     var v1 = q1.normalise();
-    var threshold = 0.9995;
-    
+   
     var dot = v0.dot(v1);
     if(dot < 0){
         v1 = v1.scale(-1);;
         dot = -dot;
     }
-    if(dot > threshold){
+    if(dot > Quaternion._threshold){
         return Quaternion.nlerp(v0, v1, t);
     }
     dot = Math.min( Math.max(dot, -1), 1);
@@ -363,7 +362,7 @@ var Argo = new function() {
             return this.plane;
         };
         this.getShape = function(view){
-            var tolerance = 0.001;
+            var tolerance = 0.000001;
             if(Math.abs(this.plane.c + this.plane.d) < tolerance){
                 //line, Ax + By = C. 4ax + 4by = 4(c-d)
                 var A = 4 * this.plane.a / view.zoom;
@@ -381,99 +380,46 @@ var Argo = new function() {
         this.calculatePlane = function(now, loc, view, ctx){
             this.setPlane([0,0,1],[0,0,0]);
         };
+        this.calculateProjectedPoints = function(now, loc, view, ctx){
+            return [];
+        };
         this.draw = function(now, loc, view, ctx){
-            this.calculatePlane(now, loc, view, ctx);
-            var shape = this.getShape(view);
-            if("draw" in shape){
-                shape.draw(view, ctx, this.colour);
+
+            var points = this.calculateProjectedPoints(now, loc, view, ctx);
+            
+            if(points.length && points.length > 0){
+                var w = ctx.canvas.width; var h = ctx.canvas.height;
+                var vmin = Math.min(w,h); var vmax = Math.max(w, h); var ratio = vmax/vmin;
+                ctx.beginPath();
+                ctx.strokeStyle=this.colour;
+                var firstPoint = points[0];
+                var firstLeft = (w + firstPoint.x*vmin)/2;
+                var firstTop = (h + firstPoint.y*vmin)/2;
+                ctx.moveTo(firstLeft, firstTop);
+                var isOutside = false;
+                for (var i = 0; i < points.length; i++) {
+                    var coords = points[i];
+                    var left = (w + coords.x*vmin)/2;
+                    var top = (h + coords.y*vmin)/2;
+                    if(Math.abs(coords.x) > ratio || Math.abs(coords.y) > ratio){
+                        if (isOutside) {
+                            ctx.moveTo(left, top);
+                        } else {
+                            ctx.lineTo(left, top);
+                        }
+                        isOutside = true;
+                    } else {
+                        ctx.lineTo(left, top);
+                        isOutside = false;
+                    }
+                }
+                ctx.stroke();
+                ctx.closePath();
             }
+            
+
         };
         this.colour = "green";
-
-        function Line(A, B, C){
-            //Ax + By = C
-            this.A = A || 0;
-            this.B = B || 0;
-            this.C = C || 0;
-            
-            this.draw = function(view, ctx, colour){
-                var w = ctx.canvas.width; var h = ctx.canvas.height;
-                var vmin = Math.min(w,h); var vmax = Math.max(w, h); var ratio = vmax/vmin;
-                var tolerance = 0.001;
-
-                if(Math.abs(this.A) < tolerance && Math.abs(this.B) < tolerance){
-                    return;
-                } else if (Math.abs(this.A) < tolerance){ //By = C
-                    var yintercept = this.C / this.B;
-                    if(Math.abs(yintercept) > ratio){
-                        return;
-                    }
-                    var top = (h + yintercept*vmin)/2;
-                    ctx.beginPath();
-                    ctx.strokeStyle=colour;
-                    ctx.moveTo(0, top);
-                    ctx.lineTo(w, top);
-                    ctx.stroke();
-                    ctx.closePath();
-                } else if (Math.abs(this.B) < tolerance){ //Ax = C
-                    var xintercept = this.C / this.A;
-                    if(Math.abs(xintercept) > ratio){
-                        return;
-                    }
-                    var left = (w + xintercept*vmin)/2;
-                    ctx.beginPath();
-                    ctx.strokeStyle=colour;
-                    ctx.moveTo(left, 0);
-                    ctx.lineTo(left, h);
-                    ctx.stroke();
-                    ctx.closePath();
-                } else {
-                    var d = Math.abs(this.C)/Math.sqrt(this.A * this.A + this.B * this.B);
-                    if(d > ratio){
-                        return;
-                    }
-                    if(Math.abs(this.B) > Math.abs(this.A)){ //"flat" line
-                        var x0 = -ratio; var x1 = +ratio;
-                        var y0 = (this.C - this.A * x0)/this.B; var y1 = (this.C - this.A * x1)/this.B;
-                    } else { //"steep" line
-                        var y0 = -ratio; var y1 = +ratio;
-                        var x0 = (this.C - this.B * y0)/this.A; var x1 = (this.C - this.B * y1)/this.A;
-                    }
-                    ctx.beginPath();
-                    ctx.strokeStyle=colour;
-                    ctx.moveTo((w + x0*vmin)/2, (h + y0*vmin)/2);
-                    ctx.lineTo((w + x1*vmin)/2, (h + y1*vmin)/2);
-                    ctx.stroke();
-                    ctx.closePath();
-                }
-            }
-        }
-        function Circle(xc, yc, r){
-            this.xc = xc || 0;
-            this.yc = yc || 0;
-            this.r = r || 0;
-
-            this.draw = function(view, ctx, colour){
-                var w = ctx.canvas.width; var h = ctx.canvas.height;
-                var vmin = Math.min(w,h); var vmax = Math.max(w, h); var ratio = vmax/vmin;
-                if(Math.abs(this.xc) > (ratio + this.r) || Math.abs(this.yc) > (ratio + this.r)){
-                    return;
-                } else{
-                    var d = this.r - Math.sqrt(this.xc * this.xc + this.yc * this.yc);
-                    if(d > Math.sqrt(1 + ratio*ratio)){
-                        return;
-                    }
-                    var left = (w + this.xc*vmin)/2;
-                    var top = (h + this.yc*vmin)/2;
-                    var ar = this.r * vmin/2;
-                    ctx.beginPath();
-                    ctx.strokeStyle=colour;
-                    ctx.arc(left,top,ar,0,2*Math.PI);
-                    ctx.stroke();
-                    ctx.closePath();
-                }
-            }
-        }
 
     }
 
@@ -490,6 +436,19 @@ var Argo = new function() {
             var rotNormal = Quaternion.applyRotation(Argo.view.rot, normal);
             var rotPoint = [0,0,0]; //always passes through centre
             this.setPlane(rotNormal, rotPoint);
+        }
+        this.calculateProjectedPoints = function(now, loc, view, ctx){
+            var points = [];
+            for (var alt = -90; alt <= 90; alt++) {
+                var x = - Math.cos(alt * Math.PI/180)*Math.sin(this.azi * Math.PI/180);
+                var y = - Math.cos(alt * Math.PI/180)*Math.cos(this.azi * Math.PI/180);
+                var z = Math.sin(alt * Math.PI/180);
+                var point = [x,y,z];
+                var rotP = Quaternion.applyRotation(Argo.view.rot, point);
+                var projP = Argo.projectLocation(rotP, view);
+                points.push(projP);
+            }
+            return points;
         }
     }
 
@@ -508,6 +467,19 @@ var Argo = new function() {
             var rotPoint = Quaternion.applyRotation(Argo.view.rot, point);
             this.setPlane(rotNormal, rotPoint);
         }
+        this.calculateProjectedPoints = function(now, loc, view, ctx){
+            var points = [];
+            for (var azi = 0; azi <= 360; azi++) {
+                var x = - Math.cos(this.alt * Math.PI/180)*Math.sin(azi * Math.PI/180);
+                var y = - Math.cos(this.alt * Math.PI/180)*Math.cos(azi * Math.PI/180);
+                var z = Math.sin(this.alt * Math.PI/180);
+                var point = [x,y,z];
+                var rotP = Quaternion.applyRotation(Argo.view.rot, point);
+                var projP = Argo.projectLocation(rotP, view);
+                points.push(projP);
+            }
+            return points;
+        }
     }
 
     function RAGridObj(ra){
@@ -523,7 +495,15 @@ var Argo = new function() {
             var rotNormal = Argo.getRotatedCoords(this.ra, 0, now, loc, view);
             var rotPoint = [0,0,0]; //always passes through centre
             this.setPlane(rotNormal, rotPoint);
-        }
+        };
+        this.calculateProjectedPoints = function(now, loc, view, ctx){
+            var points = [];
+            for (var dec = -90; dec <= 90; dec++) {
+                var projP = Argo.getProjectedLocation(this.ra, dec, now, loc, view);
+                points.push(projP);
+            }
+            return points;
+        };
     }
 
     function DecGridObj(dec){
@@ -538,9 +518,18 @@ var Argo = new function() {
         this.calculatePlane = function(now, loc, view, ctx){
             var rotNormal = Argo.getRotatedCoords(0, 90, now, loc, view); //find where NCP is
             var s = Math.sin(this.dec * Math.PI/180);
-            var rotPoint = [rotNormal[0] * s, rotNormal[1] * s, rotNormal[2] * s]; //scale by sin(dec)
+            var m = Math.sqrt(rotNormal[0] * rotNormal[0] + rotNormal[1] * rotNormal[1] + rotNormal[2] * rotNormal[2]);
+            var rotPoint = [rotNormal[0] * s / m, rotNormal[1] * s / m, rotNormal[2] * s / m]; //scale to have length sin(dec)
             this.setPlane(rotNormal, rotPoint);
-        }
+        };
+        this.calculateProjectedPoints = function(now, loc, view, ctx){
+            var points = [];
+            for (var ra = 0; ra <= 360; ra++) {
+                var projP = Argo.getProjectedLocation(ra, this.dec, now, loc, view);
+                points.push(projP);
+            }
+            return points;
+        };
     }
 
 
@@ -599,7 +588,6 @@ var Argo = new function() {
             if(!Argo.menuOpen){
                 Argo.mouse.isDown = true;
                 Argo.mouse.updateStore(evt);
-                Argo.mouse.current = Argo.mouse.start;
                 window.addEventListener("mousemove", Argo.mouse.dragHandler);
             }
         },
@@ -646,7 +634,7 @@ var Argo = new function() {
         for(var i = -8; i < 9; i++){
             _argo.grid.horizontal.push( new AltGridObj(i*10) );
         }
-        for(var j = -18; j < 18; j++){
+        for(var j = 0; j < 36; j++){
             _argo.grid.horizontal.push( new AziGridObj(j*10) );
         }
 
